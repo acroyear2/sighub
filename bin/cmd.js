@@ -9,6 +9,8 @@ var argv = minimist(process.argv.slice(2), {
   alias: {
     port: 'p',
     host: 'h',
+    u: 'uid',
+    g: 'gid',
     'max-broadcasts': 'm'
   },
   default: {
@@ -27,6 +29,9 @@ server.on('broadcast', function (channel, message) {
   console.log('broadcast: %s (%d)', channel, message.length);
 });
 
+if (undefined !== argv.gid) process.setgid(argv.gid);
+if (undefined !== argv.uid) process.setuid(argv.uid);
+
 server.listen({ fd: fd }, function () {
-  console.log('listening on: ' + server.address().port);
+  console.log('listening on :' + server.address().port);
 });
