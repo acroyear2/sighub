@@ -22,7 +22,7 @@
     "test": "tape test.js"
   },
   "bin": {
-    "signalhub": "./bin.js"
+    "signalhub": "./bin/cmd.js"
   },
   "repository": {
     "type": "git",
