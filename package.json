@@ -11,6 +11,7 @@
     "nets": "^3.1.0",
     "pump": "^1.0.0",
     "random-iterate": "^1.0.1",
+    "routes": "^2.0.0",
     "size-limit-stream": "^1.0.0",
     "stream-collector": "^1.0.1",
     "tcp-bind": "^1.2.0",

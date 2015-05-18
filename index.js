@@ -4,8 +4,27 @@ var pump = require('pump');
 var iterate = require('random-iterate');
 var limiter = require('size-limit-stream');
 var eos = require('end-of-stream');
+var Router = require('routes');
 
 var channels = {};
+
+module.exports = function (opts) {
+  if (!opts) opts = {};
+  opts.maxBroadcasts = opts.maxBroadcasts || Infinity;
+
+  var router = Router();
+  router.addRoute('/broadcast/:name', cors(broadcast(opts)));
+  router.addRoute('/subscribe/:name', cors(subscribe(opts)));
+
+  return function (req, res) {
+    var m = router.match(req.url);
+    if (m) m.fn(req, res, m.params);
+    else {
+      res.statusCode = 404;
+      res.end();
+    }
+  };
+};
 
 function get (channel) {
   if (channels[channel]) return channels[channel];
@@ -13,59 +32,44 @@ function get (channel) {
   return channels[channel];
 }
 
-module.exports = function (opts) {
-  if (!opts) opts = {};
-  var maxBroadcasts = opts.maxBroadcasts || Infinity;
-
-  return cors(function (req, res) {
-    if (req.url === '/') {
-      res.end(JSON.stringify({name: 'signalhub', version: require('./package').version}, null, 2) + '\n');
-      return;
+function broadcast (opts) {
+  return function (req, res, params) {
+    if ('POST' !== req.method) {
+      res.statusCode = 405;
+      return res.end();
     }
-
-    if (req.url.slice(0, 4) !== '/v1/') {
-      res.statusCode = 404;
-      res.end();
-      return;
-    }
-
-    var name = req.url.slice(4).split('?')[0];
-
-    if (req.method === 'POST') {
-      collect(pump(req, limiter(64 * 1024)), function (err, data) {
-        if (err) return res.end();
-        if (!channels[name]) return res.end();
-        var channel = get(name);
-
-        data = Buffer.concat(data).toString();
-
-        var ite = iterate(channel.subscribers);
-        var next, cnt = 0;
-
-        while ((next = ite()) && cnt++ < maxBroadcasts) {
-          next.write('data: ' + data + '\n\n');
-        }
-
-        res.end();
-      });
-      return;
-    }
-
-    if (req.method === 'GET') {
-      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    var name = params.name;
+    collect(pump(req, limiter(64 * 1024)), function (err, data) {
+      if (err) return res.end();
+      if (!channels[name]) return res.end();
       var channel = get(name);
-      channel.subscribers.push(res);
-      eos(res, function () {
-        var i = channel.subscribers.indexOf(res);
-        if (i > -1) channel.subscribers.splice(i, 1);
-        if (!channel.subscribers.length && channel === channels[channel.name])
-          delete channels[channel.name];
-      });
-      if (res.flushHeaders) res.flushHeaders();
-      return;
-    }
+      data = Buffer.concat(data).toString();
+      var ite = iterate(channel.subscribers);
+      var next, cnt = 0;
+      while ((next = ite()) && cnt++ < opts.maxBroadcasts) {
+        next.write('data: ' + data + '\n\n');
+      }
+      res.end();
+    });
+  };
+}
 
-    res.statusCode = 404;
-    res.end();
-  });
-};
+function subscribe (opts) {
+  return function (req, res, params) {
+    if ('GET' !== req.method) {
+      res.statusCode = 405;
+      return res.end();
+    }
+    var name = params.name;
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    var channel = get(name);
+    channel.subscribers.push(res);
+    eos(res, function () {
+      var i = channel.subscribers.indexOf(res);
+      if (i > -1) channel.subscribers.splice(i, 1);
+      if (!channel.subscribers.length && channel === channels[channel.name])
+        delete channels[channel.name];
+    });
+    if (res.flushHeaders) res.flushHeaders();
+  };
+}
