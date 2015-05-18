@@ -16,9 +16,9 @@ module.exports = function (opts) {
   var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
 
   var router = Router();
-  router.addRoute('/channels/create', cors(create()));
-  router.addRoute('/channels/broadcast/:id', cors(broadcast(opts)));
-  router.addRoute('/channels/subscribe/:id', cors(subscribe()));
+  router.addRoute('/create', cors(create()));
+  router.addRoute('/broadcast/:id', cors(broadcast(opts)));
+  router.addRoute('/subscribe/:id', cors(subscribe()));
 
   return function (req, res) {
     var m = router.match(req.url);
