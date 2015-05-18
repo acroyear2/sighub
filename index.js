@@ -1,4 +1,3 @@
-var http = require('http');
 var cors = require('corsify');
 var collect = require('stream-collector');
 var pump = require('pump');
@@ -6,17 +5,19 @@ var iterate = require('random-iterate');
 var limiter = require('size-limit-stream');
 var eos = require('end-of-stream');
 
+var channels = {};
+
+function get (channel) {
+  if (channels[channel]) return channels[channel];
+  channels[channel] = { name: channel, subscribers: [] };
+  return channels[channel];
+}
+
 module.exports = function (opts) {
-  var channels = {};
-  var maxBroadcasts = (opts && opts.maxBroadcasts) || Infinity;
+  if (!opts) opts = {};
+  var maxBroadcasts = opts.maxBroadcasts || Infinity;
 
-  var get = function (channel) {
-    if (channels[channel]) return channels[channel];
-    channels[channel] = { name: channel, subscribers: [] };
-    return channels[channel];
-  }
-
-  var server = http.createServer(cors(function (req, res) {
+  return cors(function (req, res) {
     if (req.url === '/') {
       res.end(JSON.stringify({name: 'signalhub', version: require('./package').version}, null, 2) + '\n');
       return;
@@ -36,7 +37,6 @@ module.exports = function (opts) {
         if (!channels[name]) return res.end();
         var channel = get(name);
 
-        server.emit('publish', channel.name, data);
         data = Buffer.concat(data).toString();
 
         var ite = iterate(channel.subscribers);
@@ -54,7 +54,6 @@ module.exports = function (opts) {
     if (req.method === 'GET') {
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
       var channel = get(name);
-      server.emit('subscribe', channel.name);
       channel.subscribers.push(res);
       eos(res, function () {
         var i = channel.subscribers.indexOf(res);
@@ -68,7 +67,5 @@ module.exports = function (opts) {
 
     res.statusCode = 404;
     res.end();
-  }))
-
-  return server;
+  });
 };

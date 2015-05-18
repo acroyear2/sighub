@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 var http = require('http');
-var handle = require('..');
 var alloc = require('tcp-bind');
 var argv = require('yargs')
 
@@ -26,11 +25,10 @@ var argv = require('yargs')
 
   .argv;
 
-var server = handle({ maxBroadcasts: 0 });
-
 if (undefined !== argv.gid) process.setgid(argv.gid);
 if (undefined !== argv.uid) process.setuid(argv.uid);
 
+var server = http.createServer(require('..')());
 server.listen({ fd: alloc(argv.port) }, function () {
   console.log('listening on :' + server.address().port);
 });
