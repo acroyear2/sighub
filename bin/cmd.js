@@ -3,35 +3,34 @@
 var http = require('http');
 var handle = require('..');
 var alloc = require('tcp-bind');
-var minimist = require('minimist');
+var argv = require('yargs')
 
-var argv = minimist(process.argv.slice(2), {
-  alias: {
-    port: 'p',
-    host: 'h',
-    u: 'uid',
-    g: 'gid',
-    'max-broadcasts': 'm'
-  },
-  default: {
-    port: require('is-root')() ? 80 : 5000
-  }
-}), fd = alloc(argv.port);
+  .usage('usage: $0 {options}')
 
-var max = Number(argv['max-broadcasts']) || 0;
-var server = handle({ maxBroadcasts: max });
+  .help('help')
+  .version(require('../package.json').version + '\n', 'version')
 
-server.on('subscribe', function (channel) {
-  console.log('subscribe: %s', channel);
-});
+  .alias('help', 'h')
+  .alias('version', 'V')
+  .alias('uid', 'u')
+  .alias('gid', 'g')
+  .alias('port', 'p')
 
-server.on('broadcast', function (channel, message) {
-  console.log('broadcast: %s (%d)', channel, message.length);
-});
+  .describe('help', 'show this message')
+  .describe('version', 'show version number')
+  .describe('port', 'listen for connections on this port')
+  .describe('uid', 'drop permissions to this uid')
+  .describe('gid', 'drop permissions to this gid')
+
+  .default('port', require('is-root')() ? 80 : 5000)
+
+  .argv;
+
+var server = handle({ maxBroadcasts: 0 });
 
 if (undefined !== argv.gid) process.setgid(argv.gid);
 if (undefined !== argv.uid) process.setuid(argv.uid);
 
-server.listen({ fd: fd }, function () {
+server.listen({ fd: alloc(argv.port) }, function () {
   console.log('listening on :' + server.address().port);
 });
