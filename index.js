@@ -1,4 +1,4 @@
-var cors = require('corsify');
+var corsify = require('corsify');
 var collect = require('stream-collector');
 var pump = require('pump');
 var iterate = require('random-iterate');
@@ -12,6 +12,8 @@ var channels = {};
 module.exports = function (opts) {
   if (!opts) opts = {};
   opts.maxBroadcasts = opts.maxBroadcasts || Infinity;
+
+  var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
 
   var router = Router();
   router.addRoute('/channels/create', cors(create()));
