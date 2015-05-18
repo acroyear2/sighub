@@ -16,7 +16,7 @@ var cmd = argv._[0];
 
 if (cmd === 'listen') {
   var max = Number(argv['max-broadcasts']) || 0;
-  var server = require('./server')({maxBroadcasts: max});
+  var server = require('../server')({maxBroadcasts: max});
 
   server.on('subscribe', function (channel) {
     console.log('subscribe: %s', channel);
@@ -35,7 +35,7 @@ if (cmd === 'listen') {
 if (cmd === 'subscribe') {
   if (argv.length < 3)
     return console.error('Usage: signalhub subscribe [app] [channel]');
-  var client = require('./')(argv._[1], argv.host || 'localhost');
+  var client = require('../')(argv._[1], argv.host || 'localhost');
   client.subscribe(argv._[2]).on('data', function (data) {
     console.log(data);
   });
@@ -45,7 +45,7 @@ if (cmd === 'subscribe') {
 if (cmd === 'broadcast') {
   if (argv.length < 4)
     return console.error('Usage: signalhub broadcast [app] [channel] [json-message]');
-  var client = require('./')(argv._[1], argv.host || 'localhost');
+  var client = require('../')(argv._[1], argv.host || 'localhost');
   client.broadcast(argv._[2], JSON.parse(argv._[3]));
   return;
 }
