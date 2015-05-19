@@ -31,11 +31,39 @@ The optional `opts` object can have these properties:
 
 Following routes are installed when you attach a sighub handle to your server:
 
-## POST /create
+## POST /subscribe
+
+Creates a new channel and starts a [Server-Sent Events (SSE)](http://dev.w3.org/html5/eventsource/) stream to deliver messages sent to this channel.
+
+- Channel id is provided in the [Link header](http://tools.ietf.org/html/rfc5988).
+- `Accept` header must be present and must contain `text/event-stream` as per the SSE spec.
+
+```
+λ ~ curl -H "Accept: text/event-stream" -X POST -I "localhost:5000/subscribe"
+HTTP/1.1 201 Created
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+Link: <https://localhost:5000/subscribe/b1acb85ff49995b959afc00ca3e89c01>; rel="channel"
+```
 
 ## GET /subscribe/:id
 
+Starts a [Server-Sent Events (SSE)](http://dev.w3.org/html5/eventsource/) stream to deliver messages sent to the channel specified by the `id`.
+
+```
+λ ~ curl -H "Accept: text/event-stream" \
+"https://localhost:5000/subscribe/b1acb85ff49995b959afc00ca3e89c01"
+```
+
 ## POST /broadcast/:id
+
+Sends a broadcast message to all connected clients to the channel specified by the `id`.
+
+```
+λ ~ echo '{"foo": "bar"}' | curl -X POST -v -d @- \
+"http://localhost:5000/broadcast/b1acb85ff49995b959afc00ca3e89c01"
+```
 
 # usage
 
