@@ -13,6 +13,7 @@
     "random-iterate": "^1.0.1",
     "routes": "^2.0.0",
     "size-limit-stream": "^1.0.0",
+    "tcp-bind": "^1.2.0",
     "yargs": "^3.9.0"
   },
   "devDependencies": {
