@@ -42,7 +42,7 @@ function create () {
       res.end();
     } else {
       channels[id] = { id: id, subscribers: [] };
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(201, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ id: id }));
     }
   };
