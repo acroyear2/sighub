@@ -17,9 +17,8 @@ module.exports = function (opts) {
   var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
 
   var router = Router();
-  router.addRoute('/create', cors(create()));
   router.addRoute('/broadcast/:id', cors(broadcast(opts)));
-  router.addRoute('/subscribe/:id', cors(subscribe()));
+  router.addRoute('/subscribe/:id?', cors(subscribe()));
 
   return function (req, res) {
     var m = router.match(req.url);
@@ -32,21 +31,15 @@ module.exports = function (opts) {
 };
 
 function create () {
-  return function (req, res) {
-    if ('POST' !== req.method) {
-      res.statusCode = 405;
-      return res.end();
-    }
-    var id = rack();
-    if (channels.hasOwnProperty(id)) {
-      res.statusCode = 500;
-      res.end();
-    } else {
-      channels[id] = { id: id, subscribers: [] };
-      res.writeHead(201, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ id: id }));
-    }
-  };
+  var id, tries = -1;
+  while (channels.hasOwnProperty(id = rack()) && ++ tries < 4)
+    continue;
+  if (tries > 3) {
+    res.statusCode = 500;
+    return res.end();
+  }
+  channels[id] = { id: id, subscribers: [] };
+  return channels[id];
 }
 
 function broadcast (opts) {
@@ -80,24 +73,38 @@ function broadcast (opts) {
 
 function subscribe () {
   return function (req, res, params) {
-    if ('GET' !== req.method) {
+    var id, channel;
+
+    if ('POST' === req.method) {
+      channel = create();
+      id = channel.id;
+      res.statusCode = 201;
+    } else if ('GET' === req.method) {
+      id = params.id;
+      channel = channels[id];
+      if (!id || !channel) {
+        res.statusCode = 404;
+        return res.end();
+      }
+    } else {
       res.statusCode = 405;
       return res.end();
     }
-    var id = params.id;
-    var channel = channels[id];
-    if (!channel) {
-      res.statusCode = 404;
-      return res.end();
-    }
-    res.setHeader('content-type', 'text/event-stream');
+
+    res.setHeader('Content-Type', 'text/event-stream');
     channel.subscribers.push(res);
+
+    if (channel.subscribers.length === 1) {
+      var resource = 'https://' + req.headers.host + '/subscribe/' + id;
+      res.setHeader('Link', '<' + resource +  '>; rel="channel"');
+    }
+
     eos(res, function () {
-      var i = channel.subscribers.indexOf(res);
-      if (i > -1) channel.subscribers.splice(i, 1);
-      if (!channel.subscribers.length && channel === channels[channel.id])
-        delete channels[channel.id];
+      var ix = channel.subscribers.indexOf(res);
+      if (~ix) channel.subscribers.splice(ix, 1);
+      if (!channel.subscribers.length) delete channels[channel.id];
     });
+
     if (res.flushHeaders) res.flushHeaders();
   };
 }
