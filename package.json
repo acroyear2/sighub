@@ -1,7 +1,7 @@
 {
-  "name": "signalhub",
-  "version": "4.0.2",
-  "description": "Simple signalling server that can be used to coordinate handshaking with webrtc or other fun stuff.",
+  "name": "sighub",
+  "version": "0.1.0",
+  "description": "aids establishing communications between remote endpoints",
   "main": "index.js",
   "dependencies": {
     "concat-stream": "^1.4.8",
@@ -16,22 +16,28 @@
     "yargs": "^3.9.0"
   },
   "devDependencies": {
-    "tape": "^4.0.0"
+    "tap": "^1.0.8"
   },
   "scripts": {
-    "test": "tape test.js"
+    "test": "tap test/*.js"
   },
   "bin": {
-    "signalhub": "./bin/cmd.js"
+    "sighub": "./bin/cmd.js"
   },
+  "keywords": [
+    "signalling",
+    "server",
+    "handshake",
+    "webrtc"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/mafintosh/signalhub.git"
+    "url": "https://github.com/tetsuo/sighub.git"
   },
-  "author": "Mathias Buus (@mafintosh)",
+  "author": "Onur Gunduz <ogunduz@gmail.com> (http://onurgunduz.com)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/mafintosh/signalhub/issues"
+    "url": "https://github.com/tetsuo/sighub/issues"
   },
-  "homepage": "https://github.com/mafintosh/signalhub"
+  "homepage": "https://github.com/tetsuo/sighub"
 }

@@ -12,7 +12,7 @@ var channels = {};
 module.exports = function (opts) {
   if (!opts) opts = {};
   opts.maxBroadcasts = opts.maxBroadcasts || Infinity;
-  opts.limitSize = opts.limitSize || (64 * 1024);
+  opts.maxSize = opts.maxSize || (64 * 1024);
 
   var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
 
@@ -56,7 +56,7 @@ function broadcast (opts) {
       return res.end();
     }
 
-    pumpify(req, limiter(opts.limitSize), concat(next))
+    pumpify(req, limiter(opts.maxSize), concat(next))
       .on('error', function () {
         res.statusCode = 500;
         return res.end();
