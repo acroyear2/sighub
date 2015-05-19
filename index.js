@@ -1,17 +1,18 @@
 var corsify = require('corsify');
-var collect = require('stream-collector');
-var pump = require('pump');
+var pumpify = require('pumpify');
 var iterate = require('random-iterate');
 var limiter = require('size-limit-stream');
 var eos = require('end-of-stream');
 var Router = require('routes');
 var rack = require('hat').rack();
+var concat = require('concat-stream');
 
 var channels = {};
 
 module.exports = function (opts) {
   if (!opts) opts = {};
   opts.maxBroadcasts = opts.maxBroadcasts || Infinity;
+  opts.limitSize = opts.limitSize || (64 * 1024);
 
   var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
 
@@ -54,25 +55,26 @@ function broadcast (opts) {
       res.statusCode = 405;
       return res.end();
     }
-    var id = params.id;
-    collect(pump(req, limiter(64 * 1024)), function (err, res) {
-      if (err) {
+
+    pumpify(req, limiter(opts.limitSize), concat(next))
+      .on('error', function () {
         res.statusCode = 500;
         return res.end();
-      }
-      var channel = channels[id];
+      });
+
+    function next (buf) {
+      var channel = channels[params.id];
       if (!channel) {
         res.statusCode = 404;
         return res.end();
       }
-      res = Buffer.concat(res).toString();
       var ite = iterate(channel.subscribers);
       var next, cnt = 0;
       while ((next = ite()) && cnt++ < opts.maxBroadcasts) {
-        next.write('data: ' + res + '\n\n');
+        next.write('data: ' + buf.toString() + '\n\n');
       }
       res.end();
-    });
+    }
   };
 }
 
