@@ -55,7 +55,7 @@ function broadcast (opts) {
       return res.end();
     }
     var id = params.id;
-    collect(pump(req, limiter(64 * 1024)), function (err, data) {
+    collect(pump(req, limiter(64 * 1024)), function (err, res) {
       if (err) {
         res.statusCode = 500;
         return res.end();
@@ -65,11 +65,11 @@ function broadcast (opts) {
         res.statusCode = 404;
         return res.end();
       }
-      data = Buffer.concat(data).toString();
+      res = Buffer.concat(res).toString();
       var ite = iterate(channel.subscribers);
       var next, cnt = 0;
       while ((next = ite()) && cnt++ < opts.maxBroadcasts) {
-        next.write('data: ' + data + '\n\n');
+        next.write('data: ' + res + '\n\n');
       }
       res.end();
     });
@@ -88,7 +88,7 @@ function subscribe () {
       res.statusCode = 404;
       return res.end();
     }
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('content-type', 'text/event-stream');
     channel.subscribers.push(res);
     eos(res, function () {
       var i = channel.subscribers.indexOf(res);
