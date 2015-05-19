@@ -73,6 +73,11 @@ function broadcast (opts) {
 
 function subscribe () {
   return function (req, res, params) {
+    if (req.headers.accept !== 'text/event-stream') {
+      res.statusCode = 406;
+      return res.end();
+    }
+
     var id, channel;
 
     if ('POST' === req.method) {
@@ -92,6 +97,9 @@ function subscribe () {
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
     channel.subscribers.push(res);
 
     if (channel.subscribers.length === 1) {
