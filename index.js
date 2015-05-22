@@ -7,112 +7,98 @@ var Router = require('routes');
 var rack = require('hat').rack();
 var concat = require('concat-stream');
 
-var channels = {};
-
 module.exports = function (opts) {
-  if (!opts) opts = {};
-  opts.maxBroadcasts = opts.maxBroadcasts || Infinity;
-  opts.maxSize = opts.maxSize || (64 * 1024);
-
-  var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
-
-  var router = Router();
-  router.addRoute('/broadcast/:id', cors(broadcast(opts)));
-  router.addRoute('/subscribe/:id?', cors(subscribe()));
-
-  return function (req, res) {
-    var m = router.match(req.url);
-    if (m) m.fn(req, res, m.params);
-    else {
-      res.statusCode = 404;
-      res.end();
-    }
-  };
+  var hub = new Hub(opts);
+  return hub.handle.bind(hub);
 };
 
-function create () {
-  var id, tries = -1;
-  while (channels.hasOwnProperty(id = rack()) && ++ tries < 4)
-    continue;
-  if (tries > 3) {
-    res.statusCode = 500;
-    return res.end();
+function sendError (res, code) {
+  res.statusCode = code;
+  res.end();
+}
+
+function Hub (opts) {
+  if (!opts) opts = {};
+  this.maxSubscribers = opts.maxSubscribers || Infinity;
+  this.maxMessageSize = opts.maxMessageSize || (64 * 1024);
+  this.channels = {};
+  var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
+  var router = this.router = Router();
+  router.addRoute('/broadcast/:id', cors(this.broadcast.bind(this)));
+  router.addRoute('/subscribe/:id?', cors(this.subscribe.bind(this)));
+}
+
+Hub.prototype.handle = function (req, res) {
+  var m = this.router.match(req.url);
+  if (m)
+    return m.fn(req, res, m.params);
+  sendError(res, 404);
+};
+
+Hub.prototype.broadcast = function (req, res, params) {
+  if ('POST' !== req.method)
+    return sendError(res, 405);
+
+  var self = this;
+  pumpify(req, limiter(self.maxMessageSize), concat(next))
+    .on('error', function () { sendError(res, 500) });
+
+  function next (buf) {
+    var channel = self.channels[params.id];
+    if (!channel)
+      return sendError(res, 404);
+    var ite = iterate(channel.subscribers);
+    var next, cnt = 0;
+    while ((next = ite()) && cnt++ < self.maxSubscribers) {
+      next.write('data: ' + buf.toString() + '\n\n');
+    }
+    res.end();
   }
-  channels[id] = { id: id, subscribers: [] };
-  return channels[id];
-}
+};
 
-function broadcast (opts) {
-  return function (req, res, params) {
-    if ('POST' !== req.method) {
-      res.statusCode = 405;
-      return res.end();
-    }
+Hub.prototype.subscribe = function (req, res, params) {
+  if (req.headers.accept !== 'text/event-stream')
+    return sendError(res, 406);
 
-    pumpify(req, limiter(opts.maxSize), concat(next))
-      .on('error', function () {
-        res.statusCode = 500;
-        return res.end();
-      });
+  var id, channel;
 
-    function next (buf) {
-      var channel = channels[params.id];
-      if (!channel) {
-        res.statusCode = 404;
-        return res.end();
-      }
-      var ite = iterate(channel.subscribers);
-      var next, cnt = 0;
-      while ((next = ite()) && cnt++ < opts.maxBroadcasts) {
-        next.write('data: ' + buf.toString() + '\n\n');
-      }
-      res.end();
-    }
-  };
-}
+  if ('POST' === req.method) {
+    channel = this.create();
+    id = channel.id;
+    res.statusCode = 201;
+  } else if ('GET' === req.method) {
+    id = params.id;
+    channel = this.channels[id];
+    if (!id || !channel) return sendError(res, 404);
+  } else return sendError(res, 405);
 
-function subscribe () {
-  return function (req, res, params) {
-    if (req.headers.accept !== 'text/event-stream') {
-      res.statusCode = 406;
-      return res.end();
-    }
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
 
-    var id, channel;
+  channel.subscribers.push(res);
 
-    if ('POST' === req.method) {
-      channel = create();
-      id = channel.id;
-      res.statusCode = 201;
-    } else if ('GET' === req.method) {
-      id = params.id;
-      channel = channels[id];
-      if (!id || !channel) {
-        res.statusCode = 404;
-        return res.end();
-      }
-    } else {
-      res.statusCode = 405;
-      return res.end();
-    }
+  if (channel.subscribers.length === 1) {
+    var resource = 'https://' + req.headers.host + '/subscribe/' + id;
+    res.setHeader('Link', '<' + resource +  '>; rel="channel"');
+  }
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+  var self = this;
+  eos(res, function () {
+    var ix = channel.subscribers.indexOf(res);
+    if (~ix) channel.subscribers.splice(ix, 1);
+    if (!channel.subscribers.length) delete self.channels[channel.id];
+  });
 
-    channel.subscribers.push(res);
+  if (res.flushHeaders) res.flushHeaders();
+};
 
-    if (channel.subscribers.length === 1) {
-      var resource = 'https://' + req.headers.host + '/subscribe/' + id;
-      res.setHeader('Link', '<' + resource +  '>; rel="channel"');
-    }
-
-    eos(res, function () {
-      var ix = channel.subscribers.indexOf(res);
-      if (~ix) channel.subscribers.splice(ix, 1);
-      if (!channel.subscribers.length) delete channels[channel.id];
-    });
-
-    if (res.flushHeaders) res.flushHeaders();
-  };
-}
+Hub.prototype.create = function () {
+  var id, tries = -1;
+  while (this.channels.hasOwnProperty(id = rack()) && ++ tries < 4)
+    continue;
+  if (tries > 3)
+    return sendError(res, 500);
+  this.channels[id] = { id: id, subscribers: [] };
+  return this.channels[id];
+};
