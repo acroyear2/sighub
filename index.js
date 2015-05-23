@@ -1,104 +1,77 @@
-var corsify = require('corsify');
-var pumpify = require('pumpify');
-var iterate = require('random-iterate');
-var limiter = require('size-limit-stream');
-var eos = require('end-of-stream');
-var Router = require('routes');
+var ssejson = require('ssejson');
 var rack = require('hat').rack();
-var concat = require('concat-stream');
+var koa = require('koa');
+var compose = require('koa-compose');
+var parse = require('co-body');
+var cors = require('koa-cors');
+var eos = require('end-of-stream');
+var PassThrough = require('stream').PassThrough;
 
 module.exports = function (opts) {
-  var hub = new Hub(opts);
-  return hub.handle.bind(hub);
-};
-
-function sendError (res, code) {
-  res.statusCode = code;
-  res.end();
-}
-
-function Hub (opts) {
   if (!opts) opts = {};
-  this.maxSubscribers = opts.maxSubscribers || Infinity;
-  this.maxMessageSize = opts.maxMessageSize || (64 * 1024);
-  this.channels = {};
-  var cors = corsify({ 'Access-Control-Allow-Methods': 'POST, GET' });
-  var router = this.router = Router();
-  router.addRoute('/broadcast/:id', cors(this.broadcast.bind(this)));
-  router.addRoute('/subscribe/:id?', cors(this.subscribe.bind(this)));
-}
 
-Hub.prototype.handle = function (req, res) {
-  var m = this.router.match(req.url);
-  if (m)
-    return m.fn(req, res, m.params);
-  sendError(res, 404);
-};
+  var app = koa(), channels = {};
 
-Hub.prototype.broadcast = function (req, res, params) {
-  if ('POST' !== req.method)
-    return sendError(res, 405);
+  app.use(cors());
+  app.use(compose([ send, listen, create ]));
 
-  var self = this;
-  pumpify(req, limiter(self.maxMessageSize), concat(next))
-    .on('error', function () { sendError(res, 500) });
-
-  function next (buf) {
-    var channel = self.channels[params.id];
-    if (!channel)
-      return sendError(res, 404);
-    var ite = iterate(channel.subscribers);
-    var next, cnt = 0;
-    while ((next = ite()) && cnt++ < self.maxSubscribers) {
-      next.write('data: ' + buf.toString() + '\n\n');
+  function *send (next) {
+    if ('POST' !== this.request.method) yield next;
+    else {
+      var m = /^\/+([a-z0-9]+)$/.exec(this.request.path);
+      if (!m) this.throw(404);
+      var body = yield parse(this, { limit: '10kb' });
+      if (!body.data) this.throw(400);
+      var id = m[1],
+          ch = channels[id];
+      if (ch) {
+        ch.write(body.data);
+        this.response.status = 200;
+      }
     }
-    res.end();
-  }
-};
-
-Hub.prototype.subscribe = function (req, res, params) {
-  if (req.headers.accept !== 'text/event-stream')
-    return sendError(res, 406);
-
-  var id, channel;
-
-  if ('POST' === req.method) {
-    channel = this.create();
-    id = channel.id;
-    res.statusCode = 201;
-  } else if ('GET' === req.method) {
-    id = params.id;
-    channel = this.channels[id];
-    if (!id || !channel) return sendError(res, 404);
-  } else return sendError(res, 405);
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  channel.subscribers.push(res);
-
-  if (channel.subscribers.length === 1) {
-    var resource = 'https://' + req.headers.host + '/subscribe/' + id;
-    res.setHeader('Link', '<' + resource +  '>; rel="channel"');
   }
 
-  var self = this;
-  eos(res, function () {
-    var ix = channel.subscribers.indexOf(res);
-    if (~ix) channel.subscribers.splice(ix, 1);
-    if (!channel.subscribers.length) delete self.channels[channel.id];
-  });
+  function *create () {
+    var id, tries = -1;
+    while (channels[(id = rack())] && ++ tries < 4)
+      continue;
+    if (tries > 3) this.throw(500);
+    channels[id] = new PassThrough({ objectMode: true });
+    this.state.channel = channels[id];
+    this.state.id = id;
+    this.response.status = 201;
+  }
 
-  if (res.flushHeaders) res.flushHeaders();
-};
+  function *listen (next) {
+    if (!this.accepts('text/event-stream')) this.throw(406);
+    var m = /^\/+([a-z0-9]+)$/.exec(this.request.path), id;
+    if (m) {
+      id = m[1];
+      this.state.channel = channels[id];
+      if (!this.state.channel) this.throw(404);
+    } else yield next;
 
-Hub.prototype.create = function () {
-  var id, tries = -1;
-  while (this.channels.hasOwnProperty(id = rack()) && ++ tries < 4)
-    continue;
-  if (tries > 3)
-    return sendError(res, 500);
-  this.channels[id] = { id: id, subscribers: [] };
-  return this.channels[id];
-};
+    this.req.setTimeout(Number.MAX_VALUE);
+    this.type = 'text/event-stream; charset=utf-8';
+    this.set('Cache-Control', 'no-cache');
+    this.set('Connection', 'keep-alive');
+
+    id = id || this.state.id;
+    var ch = this.state.channel;
+
+    ch.pipe(this.body = ssejson.serialize({}));
+    if (this.state.id)
+      this.body.write({ _id: this.state.id });
+
+    var self = this;
+    eos(this.body, function () {
+      if (self.state.id) {
+        ch.emit('end');
+        ch.emit('close');
+        delete channels[self.state.id];
+      }
+    });
+  }
+
+  return app;
+}

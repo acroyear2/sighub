@@ -2,67 +2,47 @@
 
 aids establishing communications between remote endpoints.
 
-`sighub` is originally forked from [signalhub](https://github.com/mafintosh/signalhub) and inspired by [cat-lobby](https://github.com/maxogden/cat-lobby). It combines bits and pieces of both, but is slightly different.
-
-# example
-
-```js
-var http = require('http');
-var sighub = require('sighub');
-
-var server = http.createServer(sighub());
-server.listen(5000, function () {
-  console.log('listening on :' + server.address().port);
-});
-```
+Originally forked from [signalhub](https://github.com/mafintosh/signalhub) and inspired by [cat-lobby](https://github.com/maxogden/cat-lobby). This one uses [koa](https://github.com/koajs/koa), generates channel ids on the server side and drops all connections when initiator leaves a channel.
 
 # api
 
-## var hub = sighub(opts);
+## var hub = sighub();
 
-Returns a handle `hub` that can be set to either a [http](https://nodejs.org/api/http.html) server or socket.
+Returns a [koa](https://github.com/koajs/koa) app.
 
-The optional `opts` object can have these properties:
-
-- `maxBroadcasts` is the maximum number of connections a single channel can have. `(default: Infinity)`
-- `maxSize` is the size limit of a single broadcast message in bytes. `(default: 65536)`
+```js
+require('sighub')().listen(5000);
+```
 
 # http api
 
-Following routes are installed when you attach a sighub handle to your server:
-
-## POST /subscribe
+## GET /
 
 Creates a new channel and starts a [Server-Sent Events (SSE)](http://dev.w3.org/html5/eventsource/) stream to deliver messages sent to this channel.
 
-- Channel id is provided in the [Link header](http://tools.ietf.org/html/rfc5988).
 - `Accept` header must be present and must contain `text/event-stream` as per the SSE spec.
+- Immediately pushes id of the channel.
+- When initiator leaves, all other subscribers are disconnected.
 
-```
-λ ~ curl -H "Accept: text/event-stream" -X POST -I "localhost:5000/subscribe"
-HTTP/1.1 201 Created
-Content-Type: text/event-stream
-Cache-Control: no-cache
-Connection: keep-alive
-Link: <https://localhost:5000/subscribe/b1acb85ff49995b959afc00ca3e89c01>; rel="channel"
-```
-
-## GET /subscribe/:id
+## GET /:id
 
 Starts a [Server-Sent Events (SSE)](http://dev.w3.org/html5/eventsource/) stream to deliver messages sent to the channel specified by the `id`.
 
 ```
-λ ~ curl -H "Accept: text/event-stream" \
-"https://localhost:5000/subscribe/b1acb85ff49995b959afc00ca3e89c01"
+curl -H "Accept: text/event-stream" \
+  "http://localhost:5000/6d1bab5aecf38a8432dae2b92e414a02
 ```
 
-## POST /broadcast/:id
+## POST /:id
 
 Sends a broadcast message to all connected clients to the channel specified by the `id`.
 
+- message must be in `data` parameter. It can be either a json or a form.
+
 ```
-λ ~ echo '{"foo": "bar"}' | curl -X POST -v -d @- \
-"http://localhost:5000/broadcast/b1acb85ff49995b959afc00ca3e89c01"
+curl -H "Content-Type: application/json" -X POST \
+  -d '{"data": {"boom": "boom"} }' \
+  "http://localhost:5000/6d1bab5aecf38a8432dae2b92e414a02"
 ```
 
 # usage
