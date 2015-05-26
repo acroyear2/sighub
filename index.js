@@ -60,8 +60,7 @@ module.exports = function (opts) {
     var ch = this.state.channel;
 
     ch.pipe(this.body = ssejson.serialize({}));
-    if (this.state.id)
-      this.body.write({ _id: this.state.id });
+    this.body.write({ id: id });
 
     var self = this;
     eos(this.body, function () {
