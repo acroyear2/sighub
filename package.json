@@ -14,7 +14,13 @@
     "ssejson": "^1.2.0",
     "yargs": "^3.9.0"
   },
-  "devDependencies": {},
+  "scripts": {
+    "test": "tape test.js"
+  },
+  "devDependencies": {
+    "request": "^2.55.0",
+    "tape": "^4.0.0"
+  },
   "bin": {
     "sighub": "./bin/cmd.js"
   },
